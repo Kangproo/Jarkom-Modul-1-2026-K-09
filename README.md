@@ -672,6 +672,8 @@ Echo Request dikirim dari Knights ke Chisa, sedangkan Echo Reply dikirim kembali
   <i>ICMP Echo Reply memiliki Type 0 dan Code 0.</i>
 </p>
 
+---
+
 ## 11. Analisis Telnet dan Kredensial Plaintext
 
 Pada node Chisa dijalankan layanan Telnet pada port 23. Untuk pengujian dibuat akun:
@@ -775,9 +777,9 @@ Traffic kemudian dianalisis melalui Wireshark. Pada port terbuka, paket SYN dari
 
 ## 13. SSH Public Key Authentication pada Knights
 
-Untuk administrasi jarak jauh yang lebih aman, SSH pada node Knights dikonfigurasi menggunakan public key authentication.
+Pada node Knights digunakan OpenSSH server sebagai layanan SSH. Sebelum konfigurasi public key dilakukan, layanan `sshd` dipastikan aktif dan listen pada port 22.
 
-Pada Knights dibuat user:
+Kemudian dibuat user:
 
 ```bash
 adduser -D -s /bin/sh mika_admin
@@ -1201,7 +1203,14 @@ Setelah proses dekripsi, Wireshark dapat membaca request HTTP ke `example.com` p
 
 Traffic HTTPS tidak dapat dibaca langsung karena payload berada dalam sesi TLS terenkripsi. Setelah `keyslogfile.txt` dimasukkan sebagai Pre-Master-Secret log file, Wireshark dapat mendekripsi Application Data sehingga request HTTP dapat dianalisis.
 
+Hasil analisis kemudian divalidasi melalui socket server dan seluruh jawaban diterima.
+
+<p align="center">
+  <img src="assets/Soal-20_Socket-Validation-Flag.png" width="900">
+</p>
+
 ---
+
 
 
 
