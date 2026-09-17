@@ -674,4 +674,543 @@ Echo Request dikirim dari Knights ke Chisa, sedangkan Echo Reply dikirim kembali
 
 ---
 
+## 11. Analisis Telnet dan Kredensial Plaintext
+
+Pada node Chisa dijalankan layanan Telnet pada port 23. Untuk pengujian dibuat akun:
+
+```text
+Username : phantom_user
+Password : wired_ghost
+```
+
+Layanan Telnet pada Chisa terlebih dahulu diverifikasi dalam keadaan listen pada port 23.
+
+<p align="center">
+  <img src="assets/Soal-11_Chisa_Telnetd-Port-23-Listen.png" width="900">
+</p>
+
+<p align="center">
+  <i>Layanan Telnet pada node Chisa aktif dan listen pada port 23.</i>
+</p>
+
+Setelah itu Eiri melakukan koneksi Telnet ke Chisa dan login menggunakan akun `phantom_user`.
+
+<p align="center">
+  <img src="assets/Soal-11_Eiri-Telnet-Login-Berhasil.png" width="900">
+</p>
+
+<p align="center">
+  <i>Eiri berhasil melakukan login Telnet ke node Chisa.</i>
+</p>
+
+Traffic Telnet kemudian dianalisis menggunakan Wireshark. Melalui fitur **Follow TCP Stream**, username dan password dapat terlihat dalam bentuk plaintext.
+
+<p align="center">
+  <img src="assets/Soal-11_Wireshark-Follow-TCP-Stream-Password-Plaintext.png" width="900">
+</p>
+
+<p align="center">
+  <i>Kredensial Telnet dapat dibaca langsung pada Follow TCP Stream karena Telnet tidak mengenkripsi data autentikasi.</i>
+</p>
+
+Saat proses login, input keyboard juga terlihat dikirim per karakter dalam beberapa segmen TCP. Hal ini terjadi karena Telnet bekerja secara interaktif, sehingga karakter yang diketik dapat langsung dikirim ke server tanpa menunggu satu baris input selesai.
+
+<p align="center">
+  <img src="assets/Soal-11_Wireshark-Telnet-Karakter-Per-Input.png" width="900">
+</p>
+
+<p align="center">
+  <i>Karakter input Telnet terlihat dikirim pada paket TCP secara terpisah.</i>
+</p>
+
+---
+
+## 12. Pemindaian Port Knights Menggunakan Netcat
+
+Dari node Alice dilakukan pengecekan beberapa port pada node Knights menggunakan Netcat.
+
+Perintah yang digunakan:
+
+```bash
+nc -vz 10.68.3.2 22
+nc -vz 10.68.3.2 80
+nc -vz 10.68.3.2 7777
+```
+
+Hasil pengujian menunjukkan:
+
+```text
+Port 22   -> terbuka
+Port 80   -> terbuka
+Port 7777 -> tertutup
+```
+
+<p align="center">
+  <img src="assets/Soal-12_Alice-Netcat-Port-22-80-Open-7777-Closed.png" width="900">
+</p>
+
+<p align="center">
+  <i>Netcat menunjukkan port 22 dan 80 terbuka, sedangkan koneksi ke port 7777 ditolak.</i>
+</p>
+
+Pada node Knights juga diverifikasi bahwa layanan SSH dan HTTP sedang listen.
+
+<p align="center">
+  <img src="assets/Soal-12_Knights-Port-22-80-Listen.png" width="900">
+</p>
+
+<p align="center">
+  <i>Port 22 dan 80 pada node Knights berada dalam kondisi listen.</i>
+</p>
+
+Traffic kemudian dianalisis melalui Wireshark. Pada port terbuka, paket SYN dari Alice dibalas dengan **SYN, ACK**. Sebaliknya, koneksi menuju port 7777 yang tertutup dibalas dengan **RST, ACK**.
+
+<p align="center">
+  <img src="assets/Soal-12_Wireshark-SYNACK-vs-RSTACK.png" width="900">
+</p>
+
+<p align="center">
+  <i>Perbedaan response TCP antara port terbuka yang mengirim SYN-ACK dan port tertutup yang mengirim RST-ACK.</i>
+</p>
+
+---
+
+## 13. SSH Public Key Authentication pada Knights
+
+Pada node Knights digunakan OpenSSH server sebagai layanan SSH. Sebelum konfigurasi public key dilakukan, layanan `sshd` dipastikan aktif dan listen pada port 22.
+
+Kemudian dibuat user:
+
+```bash
+adduser -D -s /bin/sh mika_admin
+```
+
+Pada Mika dibuat pasangan key ED25519 menggunakan:
+
+```bash
+ssh-keygen -t ed25519
+```
+
+<p align="center">
+  <img src="assets/Soal-13_Mika-Generate-SSH-Key-ED25519.png" width="900">
+</p>
+
+<p align="center">
+  <i>Pembuatan pasangan public key dan private key ED25519 pada node Mika.</i>
+</p>
+
+Public key dari Mika kemudian disimpan pada:
+
+```text
+/home/mika_admin/.ssh/authorized_keys
+```
+
+Permission directory dan file SSH diatur dengan:
+
+```bash
+chmod 700 /home/mika_admin/.ssh
+chmod 600 /home/mika_admin/.ssh/authorized_keys
+chown -R mika_admin:mika_admin /home/mika_admin/.ssh
+```
+
+<p align="center">
+  <img src="assets/Soal-13_Knights-SSH-AuthorizedKeys-Permissions.png" width="900">
+</p>
+
+<p align="center">
+  <i>Public key Mika telah dipasang pada authorized_keys milik user mika_admin.</i>
+</p>
+
+Konfigurasi SSH kemudian diatur menjadi:
+
+```text
+PubkeyAuthentication yes
+PasswordAuthentication no
+```
+
+<p align="center">
+  <img src="assets/Soal-13_Knights-SSH-KeyOnly-Config.png" width="900">
+</p>
+
+<p align="center">
+  <i>SSH server dikonfigurasi untuk menerima public key authentication dan menolak password authentication.</i>
+</p>
+
+### Kendala
+
+Pada percobaan awal, koneksi SSH masih meminta password walaupun public key sudah dipasang.
+
+<p align="center">
+  <img src="assets/Soal-13_Kendala-SSH-Key-Masih-Minta-Password.png" width="900">
+</p>
+
+Setelah dilakukan pengecekan, ditemukan masalah pada status akun dan permission home directory. Akun `mika_admin` kemudian diperbaiki dan permission disesuaikan.
+
+<p align="center">
+  <img src="assets/Soal-13_Knights-Akun-Unlocked-Permission-Fixed.png" width="900">
+</p>
+
+Setelah konfigurasi diperbaiki, login menggunakan SSH key berhasil dilakukan.
+
+<p align="center">
+  <img src="assets/Soal-13_Mika-SSH-Key-Login-Berhasil.png" width="900">
+</p>
+
+Koneksi final diverifikasi menggunakan:
+
+```bash
+ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes mika_admin@10.68.3.2
+```
+
+<p align="center">
+  <img src="assets/Soal-13_Mika-KeyAuth-Login-Final.png" width="900">
+</p>
+
+<p align="center">
+  <i>User mika_admin berhasil login ke Knights menggunakan SSH public key authentication.</i>
+</p>
+
+Percobaan login menggunakan password juga ditolak setelah `PasswordAuthentication` dinonaktifkan.
+
+<p align="center">
+  <img src="assets/Soal-13_Mika-PasswordAuth-Ditolak.png" width="900">
+</p>
+
+Pada Wireshark terlihat proses **Protocol Version Exchange** dan **Key Exchange**. Berbeda dengan Telnet, kredensial dan isi sesi SSH tidak dapat dibaca sebagai plaintext karena komunikasi setelah proses negosiasi dilindungi oleh enkripsi.
+
+<p align="center">
+  <img src="assets/Soal-13_Wireshark-Protocol-dan-Key-Exchange.png" width="900">
+</p>
+
+<p align="center">
+  <i>Traffic SSH memperlihatkan proses protocol exchange dan key exchange sebelum komunikasi terenkripsi berlangsung.</i>
+</p>
+
+---
+
+## 14. Analisis HTTP Brute Force
+
+File capture `wired_bruteforce.pcapng` dianalisis menggunakan Wireshark. Untuk melihat percobaan login yang dilakukan berulang kali digunakan filter:
+
+```text
+http.request.method == "POST"
+```
+
+Dari traffic tersebut diperoleh:
+
+```text
+IP attacker : 172.26.7.50
+Target      : 172.26.7.100:8080
+User        : lain_admin
+Password    : wired_pr0tocol_7
+Web server  : Apache/2.4.62
+```
+
+<p align="center">
+  <img src="assets/Soal-14_Wireshark-HTTP-POST-Bruteforce-AttackerTarget.png" width="900">
+</p>
+
+<p align="center">
+  <i>Traffic HTTP POST berulang dari attacker 172.26.7.50 menuju web server 172.26.7.100:8080.</i>
+</p>
+
+Percobaan login yang berhasil ditemukan pada frame terakhir dari rangkaian brute force.
+
+<p align="center">
+  <img src="assets/Soal-14_Wireshark-Credential-Berhasil-Frame350.png" width="900">
+</p>
+
+Header response HTTP juga menunjukkan bahwa web server menggunakan Apache versi 2.4.62.
+
+<p align="center">
+  <img src="assets/Soal-14_Wireshark-Server-Header-Apache.png" width="900">
+</p>
+
+Hasil analisis kemudian divalidasi melalui socket server dan seluruh jawaban diterima.
+
+<p align="center">
+  <img src="assets/Soal-14_Socket-Validation-Flag.png" width="900">
+</p>
+
+---
+
+## 15. USB HID Keystroke Decoding
+
+File `wired_usb_hid.pcap` dianalisis untuk mengidentifikasi perangkat USB HID dan data keyboard yang terekam.
+
+Dari USB Device Descriptor diperoleh:
+
+```text
+Vendor ID      : 0x046d
+Product ID     : 0xc31c
+Device address : 7
+```
+
+<p align="center">
+  <img src="assets/Soal-15_Wireshark-USB-Device-Descriptor-VID-PID.png" width="900">
+</p>
+
+<p align="center">
+  <i>USB Device Descriptor menunjukkan Vendor ID dan Product ID perangkat keyboard.</i>
+</p>
+
+Data keystroke ditemukan pada field `usb.capdata`.
+
+<p align="center">
+  <img src="assets/Soal-15_Wireshark-USB-HID-Capdata-DeviceAddress.png" width="900">
+</p>
+
+Setelah kode HID keyboard diterjemahkan, pesan yang diperoleh adalah:
+
+```text
+Wired_Protocol_7_is_alive_2026
+```
+
+### Kendala
+
+Pada awalnya `tshark` tidak tersedia pada Kali Linux. Percobaan instalasi melalui `apt update` juga mengalami error `503 Service Unavailable`. Sebagai alternatif digunakan `tshark.exe` yang sudah tersedia bersama instalasi Wireshark di Windows untuk mengekstrak nilai `usb.capdata`.
+
+Hasil akhir kemudian divalidasi pada socket server.
+
+<p align="center">
+  <img src="assets/Soal-15_Socket-Validation-Flag.png" width="900">
+</p>
+
+---
+
+## 16. Analisis FTP Credential Theft
+
+File `wired_ftp_theft.pcap` dianalisis menggunakan filter:
+
+```text
+ftp
+```
+
+Ditemukan sesi FTP menuju server eksternal. Informasi yang diperoleh adalah:
+
+```text
+FTP Server IP : 198.51.100.7
+Software      : vsftpd 3.0.5
+Username      : knights_agent
+Password      : N4v1_s3cur3_2026
+File          : knights_payload.exe
+Size          : 524288 bytes
+```
+
+Informasi tersebut dapat terlihat langsung karena command FTP seperti `USER`, `PASS`, `SIZE`, dan `RETR` dikirim tanpa enkripsi.
+
+<p align="center">
+  <img src="assets/Soal-16_Wireshark-FTP-Theft-Banner-Creds-Size.png" width="900">
+</p>
+
+<p align="center">
+  <i>Wireshark menunjukkan banner FTP, credential login, serta request file knights_payload.exe.</i>
+</p>
+
+Hasil analisis kemudian divalidasi melalui socket server.
+
+<p align="center">
+  <img src="assets/Soal-16_Socket-Validation-Flag.png" width="900">
+</p>
+
+---
+
+## 17. Analisis HTTP Malware Retrieval
+
+Pada file `wired_http_c2.pcap` ditemukan client mengakses server eksternal untuk mengunduh executable melalui HTTP.
+
+Traffic awal dapat dilihat dengan filter:
+
+```text
+http
+```
+
+<p align="center">
+  <img src="assets/Soal-17_Wireshark-HTTP-C2-Initial-HTTP.png" width="900">
+</p>
+
+Dari request HTTP yang mencurigakan diperoleh:
+
+```text
+Domain        : wired-update.net
+Server IP     : 203.0.113.42
+File malware  : navi_agent.exe
+HTTP response : 200
+```
+
+Request yang terlihat:
+
+```text
+GET /navi_agent.exe HTTP/1.1
+Host: wired-update.net
+```
+
+<p align="center">
+  <img src="assets/Soal-17_Wireshark-HTTP-C2-Host-Executable-Status.png" width="900">
+</p>
+
+<p align="center">
+  <i>Request HTTP menuju wired-update.net untuk mengunduh navi_agent.exe.</i>
+</p>
+
+Hasil analisis berhasil divalidasi pada socket server.
+
+<p align="center">
+  <img src="assets/Soal-17_Socket-Validation-Flag.png" width="900">
+</p>
+
+---
+
+## 18. Analisis SMB Lateral Transfer
+
+Capture `wired_smb_transfer.pcapng` dianalisis menggunakan filter:
+
+```text
+smb2
+```
+
+Terlihat host `10.7.3.100` mengakses administrative share pada host `10.7.1.50` dan menulis file executable ke directory `System32`.
+
+Hasil analisis:
+
+```text
+Protocol : SMB2
+Source   : 10.7.3.100
+Victim   : 10.7.1.50
+Folder   : System32
+File     : wired_trojan_payload.exe
+```
+
+Pada Wireshark terlihat proses **Tree Connect**, **Create Request**, **Write Request**, dan **Close Request** terhadap file tersebut.
+
+<p align="center">
+  <img src="assets/Soal-18_Wireshark-SMB2-Transfer-Overview.png" width="900">
+</p>
+
+<p align="center">
+  <i>Transfer wired_trojan_payload.exe melalui SMB2 dari source host menuju folder System32 pada victim.</i>
+</p>
+
+Hasil analisis berhasil divalidasi melalui socket server.
+
+<p align="center">
+  <img src="assets/Soal-18_Socket-Validation-Flag.png" width="900">
+</p>
+
+---
+
+## 19. Analisis SMTP Threat
+
+File `wired_smtp_threat.pcap` dianalisis menggunakan filter:
+
+```text
+smtp
+```
+
+Dari beberapa sesi SMTP yang terdapat pada capture, ditemukan email pemerasan yang dikirim oleh attacker. Isi email lengkap kemudian dilihat menggunakan **Follow TCP Stream**.
+
+Hasil analisis:
+
+```text
+Victim email : victim@protocol7.co.jp
+Password     : pr0tocol_7_user
+Malware      : private ransomware
+Deadline     : 3 hari
+MailClientID : 7719980706
+```
+
+<p align="center">
+  <img src="assets/Soal-19_Wireshark-SMTP-Overview.png" width="900">
+</p>
+
+<p align="center">
+  <i>Traffic SMTP pada file capture sebelum pemilihan stream email ancaman.</i>
+</p>
+
+<p align="center">
+  <img src="assets/Soal-19_Wireshark-SMTP-Threat-TCP-Stream.png" width="900">
+</p>
+
+<p align="center">
+  <i>Isi email pemerasan yang dikirim attacker kepada korban melalui SMTP plaintext.</i>
+</p>
+
+### Kendala
+
+Pada awal analisis sempat dipilih stream SMTP lain yang merupakan spam biasa. Stream tersebut mendapat response:
+
+```text
+550 Blocked by spam filter
+```
+
+Karena stream tersebut tidak memiliki body email ancaman, pencarian dilanjutkan ke stream SMTP lain sampai ditemukan pesan extortion yang memiliki command `DATA` dan isi email lengkap.
+
+Hasil akhir berhasil divalidasi pada socket server.
+
+<p align="center">
+  <img src="assets/Soal-19_Socket-Validation-Flag.png" width="900">
+</p>
+
+---
+
+## 20. TLS Decrypted Stream
+
+File `wired_tls_decrypt.pcapng` berisi komunikasi HTTPS yang terenkripsi. File `keyslogfile.txt` digunakan agar Wireshark dapat mendekripsi sesi TLS tersebut.
+
+Keylog dimasukkan melalui:
+
+```text
+Edit
+→ Preferences
+→ Protocols
+→ TLS
+→ (Pre)-Master-Secret log filename
+```
+
+Setelah keylog dipasang, request HTTP di dalam sesi TLS dapat dibaca.
+
+Hasil analisis:
+
+```text
+TLS Version : TLSv1.2
+Domain      : example.com
+Server IP   : 93.184.216.34
+User-Agent  : curl/7.62.0
+Request     : HEAD /
+```
+
+Pada paket **Server Hello** terlihat versi protokol yang dinegosiasikan adalah TLS 1.2. Cipher suite yang digunakan juga terlihat sebagai `TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256`.
+
+<p align="center">
+  <img src="assets/Soal-20_Wireshark-TLS-Server-Hello-Version-Cipher.png" width="900">
+</p>
+
+<p align="center">
+  <i>Server Hello menunjukkan TLS 1.2 sebagai versi protokol yang digunakan.</i>
+</p>
+
+Setelah proses dekripsi, Wireshark dapat membaca request HTTP ke `example.com` pada port HTTPS.
+
+<p align="center">
+  <img src="assets/Soal-20_Wireshark-TLS-Decrypted-HTTP-Overview.png" width="900">
+</p>
+
+<p align="center">
+  <i>Request HTTP hasil dekripsi menunjukkan Host example.com, User-Agent curl/7.62.0, dan method HEAD.</i>
+</p>
+
+### Kendala
+
+Traffic HTTPS tidak dapat dibaca langsung karena payload berada dalam sesi TLS terenkripsi. Setelah `keyslogfile.txt` dimasukkan sebagai Pre-Master-Secret log file, Wireshark dapat mendekripsi Application Data sehingga request HTTP dapat dianalisis.
+
+Hasil analisis kemudian divalidasi melalui socket server dan seluruh jawaban diterima.
+
+<p align="center">
+  <img src="assets/Soal-20_Socket-Validation-Flag.png" width="900">
+</p>
+
+---
+
+
+
 
